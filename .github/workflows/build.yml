@@ -1,0 +1,59 @@
+name: Build Docera APK
+
+on:
+  push:
+    paths:
+      - 'project.zip'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Unpack project
+        run: |
+          mkdir proj
+          unzip -q project.zip -d proj
+
+      - name: Download offline JS libraries (PDF.js etc.)
+        run: |
+          A=proj/app/src/main/assets
+          get() { curl -fL --retry 3 -o "$A/$2" "$1" || rm -f "$A/$2"; }
+          get https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js pdf.min.js
+          get https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js pdf.worker.min.js
+          get https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js html2canvas.min.js
+          get https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js jspdf.umd.min.js
+          ls -la $A
+
+      - name: Build APK
+        working-directory: proj
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Docera-APK
+          path: proj/app/build/outputs/apk/debug/*.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Docera build ${{ github.run_number }}
+          files: proj/app/build/outputs/apk/debug/*.apk
+          
